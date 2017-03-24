@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 #
-#  Webp Converter 0.2.4
+#  Webp Converter 0.3.6.1
 #
-#  Copyright 2012 Indrit Bashkimi <indrit.bashkimi@gmail.com>
+#  Copyright 2013 Indrit Bashkimi <indrit.bashkimi@gmail.com>
 #
 
+from main_window import MainWindow
 
-from tkinter_window import TkinterWindow
-
+NAME = 'WebpConverter'
+VERSION = '0.3.6.1'
 
 if __name__ == '__main__':
-    window = TkinterWindow()
+    window = MainWindow()
+

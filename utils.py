@@ -1,13 +1,5 @@
 import os
-import multiprocessing
 
-
-def cpu_count():
-    try:
-        NPROCS = multiprocessing.cpu_count()
-    except:
-        NPROCS = 1
-    return NPROCS
 
 def __lastindex(name, char = '.'):
     for i in range(1, len(name)):
