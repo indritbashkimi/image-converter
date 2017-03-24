@@ -1,117 +1,167 @@
-import os
-from settings import cpu_count
-from threading import Lock, Thread
-import utils
+import subprocess
+from pathlib import Path
+from threading import Thread
+
+import settings
+
+
+class EncoderListener:
+    def on_file_encode(self, path: Path, success: bool):
+        pass
+
+
+class EncoderManager(EncoderListener):
+    def __init__(self, queue, parameters, listener=None, jobs=1):
+        self._queue = queue
+        self._parameters = parameters
+        self._jobs = jobs
+        self._listener = listener
+        self._threads = []
+        self._working = False
+        self._threads_working = 0
+
+    def do_job(self):
+        print('encoder manager: do job')
+        if not self._working:
+            self._working = True
+            self._threads_working = self._jobs
+            encoder_class = self.get_encoder(self._parameters['output_format'])
+            for n in range(self._jobs):
+                thread = encoder_class(self._queue, self._parameters, self)
+                self._threads.append(thread)
+                thread.start()
+
+    @staticmethod
+    def get_encoder(output_format):
+        if output_format == 'WebP':
+            return WebpEncoder
+        elif output_format == 'PNG':
+            return PngEncoder
+        elif output_format == 'JPEG':
+            return JpegEncoder
+        else:
+            raise Exception('Unknown format ' + output_format)
+
+    def on_job_done(self):
+        if self._working:
+            if self._threads_working == 0:
+                raise Exception("WTF self._threads_working == 0")
+            self._threads_working -= 1
+            if self._threads_working == 0:
+                self._listener.on_job_done()
+        else:
+            raise Exception("WTF job done but not working")
+
+    def on_file_encode(self, path: Path, success: bool):
+        if self._listener:
+            self._listener.on_file_encode(path, success)
+
+    def abort(self):
+        if self._working:
+            for thread in self._threads:
+                thread.force_stop()
+            for thread in self._threads:
+                thread.join()
+            self._working = False
 
 
 class Encoder(Thread):
-    def __init__(self, filelist, settings, listener):
-        self.filelist = filelist
-        self.settings = settings
-        self.listener = listener
-        self.converted = 0
-        self.stop = False
-        self.size = 0
-        self.totalsize = 0
-        self.errors = []
-        self.threads = []
-        self.nthreads = cpu_count()
-        self.index = 0
-        self.lock = Lock()
-        self.cwebp_settings = None
-        self.dwebp_settings = None
-        Thread.__init__(self)
+    def __init__(self):
+        super().__init__()
 
     def run(self):
-        self.check_settings()
-        self.cwebp_settings = self.get_cwebp_settings()
-        self.dwebp_settings = self.get_dwebp_settings()
-        for file in self.filelist:
-            self.totalsize += os.path.getsize(file)
-        for i in range(self.nthreads):
-            self.threads.append(Thread(target=self.encode))
-            self.threads[i].start()
-        for thread in self.threads:
-            thread.join()
-        new_filelist = []
-        for file in self.filelist:
-            if file:
-                new_filelist.append(file)
-        self.listener.notify_finish(self.errors, new_filelist)
+        pass
 
-    def encode(self):
-        while self.stop == False and self.index < len(self.filelist):
-            self.lock.acquire()
-            my_index = self.index
-            self.index += 1
-            self.lock.release()
-            image = self.filelist[my_index]
-            self.filelist[my_index] = None
-            output = self.getoutput(image)
-            if utils.getextension(os.path.split(image)[1]) == '.webp':
-                command = 'dwebp "%s" %s -o "%s"' % (image, self.dwebp_settings, output)
+    def force_stop(self):
+        pass
+
+
+class WebpEncoder(Encoder):
+    def __init__(self, queue, parameters, listener=None):
+        super().__init__()
+        self._queue = queue
+        self._parameters = parameters
+        self._listener = listener
+        self._cwebp_options = None
+        self._dwebp_options = None
+        self._output_format = parameters['output_format']
+        if self._output_format != 'WebP':
+            raise Exception('Unknown output format: ' + self._output_format)
+
+    def force_stop(self):
+        super().force_stop()
+
+    def run(self):
+        print('encoder: run')
+        input_path = self._queue.get_next()
+        while input_path:
+            output_path = self.get_output_path(input_path)
+            if input_path.suffix.lower() in ['.jpg', '.jpeg', '.png']:
+                cmd = 'cwebp -q %d %s "%s" -o "%s"' % (self._get_quality(input_path),
+                                                       self._get_cwebp_options(),
+                                                       input_path,
+                                                       output_path)
+            elif input_path.suffix.lower() in ['.webp']:
+                cmd = 'dwebp "%s" %s -o "%s"' % (input_path.absolute().__str__(),
+                                                 self._get_cwebp_options(),
+                                                 output_path.absolute().__str__())
             else:
-                command = 'cwebp -q %d %s "%s" -o "%s"' % (self.get_quality(image), self.cwebp_settings, image, output)
-            os.system(command)
-            if os.path.exists(output):
-                if not os.path.getsize(output):
-                    self.errors.append(image)
-                    try:
-                        os.system('rm "' + output + '"')
-                    except:
-                        pass
-            else:
-                self.errors.append(image)
-            self.lock.acquire()
-            self.converted += 1
-            self.update_progress(image)
-            self.lock.release()
+                raise Exception("Unknown format")
+            proc = subprocess.Popen(cmd + " > /dev/null", shell=True)
+            proc.wait()
+            if self._listener:
+                self._listener.on_file_encode(input_path, True)
+            input_path = self._queue.get_next()
+        if self._listener:
+            self._listener.on_job_done()
 
-    def check_settings(self):
-        dest = self.settings['dir']
-        if dest != '':
-            if not os.path.isdir(dest):
-                try:
-                    os.mkdir(dest)
-                except:
-                    dest=''
-        self.settings['dir'] = dest      
-
-    def get_quality(self, img):
-        if self.settings['qfile']:
+    def _get_quality(self, path: Path) -> int:
+        if self._parameters['qfile']:
             # image[q89].jpg. rimuovendo l'estensione l'algoritmo lavora con dim ext generica
-            img = utils.getname(os.path.split(img)[1])
+            img = path.name
             q = img[-3:-1]
             if len(img) > 5 and img[-5:-3] == '[q' and str.isnumeric(q) and img[-1] == ']':
                 if q == '00':
                     return 100
                 return int(q)
-        return self.settings['quality']
+        return self._parameters['quality']
 
-    def get_cwebp_settings(self):
-        s = ''
-        if self.settings['size'] != 0:
-            s += ' -size ' + str(self.settings['size'])
-            if self.settings['pass'] != 0:
-                s += ' -pass ' + str(self.settings['pass'])
-        if self.settings['quiet']:
-            s += ' -quiet'
-        return s
-
-    def get_dwebp_settings(self):
+    def _get_cwebp_options(self) -> str:
+        if self._cwebp_options is None:
+            s = ''
+            if self._parameters['size'] != 0:
+                s += ' -size ' + str(self._parameters['size'])
+            if self._parameters['pass'] != 0:
+                s += ' -pass ' + str(self._parameters['pass'])
+            if self._parameters['quiet']:
+                s += ' -quiet'
+            self._cwebp_options = s
         return ''
 
-    def getoutput(self, path):
-        root, ext = os.path.splitext(path)
-        if self.settings['dir'] != '':
-            root = self.settings['dir'] + os.path.split(root)[1]
-        if ext == '.webp':
-            return root + '.png'
-        return root + '.webp'
+    def _get_dwebp_options(self) -> str:
+        if self._dwebp_options is None:
+            self._dwebp_options = ''
+        return self._dwebp_options
 
-    def update_progress(self, image):
-        self.size += os.path.getsize(image)
-        self.listener.update_progress(int((self.size / self.totalsize) * 100), self.converted)
+    def get_output_path(self, path: Path):
+        suffix = '.webp' if self._output_format == 'webp' else '.png'
+        return path.with_suffix(suffix)
 
-    def abort(self):
-        self.stop = True
+
+class PngEncoder(Encoder):
+    def __init__(self, queue, parameters, listener=None):
+        super().__init__()
+        self._queue = queue
+        self._parameters = parameters
+        self._listener = listener
+        raise Exception('Not implemented yet.')
+
+
+class JpegEncoder(Encoder):
+    def __init__(self, queue, parameters, listener=None):
+        super().__init__()
+        self._queue = queue
+        self._parameters = parameters
+        self._listener = listener
+        raise Exception('Not implemented yet.')
+

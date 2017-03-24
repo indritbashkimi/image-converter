@@ -1,245 +1,293 @@
-from tkinter import*
+from pathlib import Path
+from tkinter import *
 from tkinter import ttk
 import tkinter.filedialog
-from threading import Thread
-from encoder import Encoder
+import tkinter.messagebox
+from manager import ManagerListener, Manager
 from options_window import OptionsWindow
 import settings
-import utils
 import os
 
 
-class MainWindow(object):
+class MyListbox(Listbox):
+    def __init__(self, master=None, cnf={}, **kw):
+        super().__init__(master, cnf)
 
+    def clear(self):
+        self.delete(0, END)
+
+    def delete_elem(self, path: Path):
+        index = 0
+        for elem in self.get(0, END):
+            if elem == path.absolute().__str__():
+                break
+            index += 1
+        self.delete(index)
+
+
+class MainWindow(ManagerListener):
     def __init__(self):
-        self.filelist = list()
-        self.settings = settings.settings
+        super().__init__()
+        self.default_base = '/home/'
         self.running = False
-        self.aborted = False
         self.encoder = None
-        
         self.font = 'Ubuntu'
-        self.filepattern = settings.filepattern
-        
+        self.manager = Manager()
+        self.manager.add_listener(self)
+
+        self.encoding_started = False
+
         self.master = Tk()
         self.master.protocol('WM_DELETE_WINDOW', self.destroy)
+        # self.master.resizable(False, False)
+        self.master.title('Webp Converter')
         self.change_output = BooleanVar()
-        self.create_window()
 
-    def create_window(self):
+        """ style """
+        ttk.Style().configure("TButton", font=(self.font, 11))
+        ttk.Style().configure("TLabel", font=(self.font, 11))
+        ttk.Style().configure("TProgressbar")
 
-        def on_change_destination_clicked(event):
-            if self.change_output.get():
-                dir = tkinter.filedialog.askdirectory(title='Dove vuoi salvere le immagini')+'/'
-                if dir:
-                    self.destination_entry.configure(state = 'normal')
-                    self.destination_entry.delete(0,END)
-                    self.destination_entry.insert(0, dir)
-                    self.destination_entry.configure(state = 'disabled')
+        ''' menu '''
+        self.menu = Menu(self.master, relief=FLAT)
+        menu_file = Menu(self.menu, tearoff=0)
+        menu_file.add_command(label='Add File', command=self.ask_file)
+        menu_file.add_command(label='Add Folder', command=self.ask_dir)
+        menu_file.add_separator()
+        menu_file.add_command(label='Exit', command=self.destroy)
+        self.menu.add_cascade(label='File', menu=menu_file)
+        menu_edit = Menu(self.menu, tearoff=0)
+        menu_edit.add_command(label='Select All', command=self.remove_file)
+        menu_edit.add_command(label='Remove', command=self.remove_file)
+        menu_edit.add_separator()
+        menu_edit.add_command(label='Options', command=self.open_options_window)
+        self.menu.add_cascade(label='Edit', menu=menu_edit)
+        menu_help = Menu(self.menu, tearoff=0)
+        menu_help.add_command(label='About', command=self.about)
+        self.menu.add_cascade(label='Help', menu=menu_help)
+        self.master.config(menu=self.menu)
 
-        def on_check_changed():
-            if self.change_output.get():
-                self.change_destination.configure(state='normal')
-            else:
-                self.change_destination.configure(state='disabled')
+        ''' frames '''
+        toolbar = Frame(self.master)
+        input_frame = ttk.Frame(self.master)
+        output_format_frame = ttk.Frame(self.master)
+        dest_frame = Frame(self.master)
+        bottom_frame = Frame(self.master)
 
-        def about():
-            about_master = tkinter.Toplevel(self.master)
-            txt = "WebP Converter permette di convertire file .jpg o .png"+\
-                " in .webp.\nPermette anche di convertire file .webp in"+\
-                " .png\nPer ulteriori informazioni, potete consultare "+\
-                "la self.master.mainloop()pagina ufficiale di Webp."
-            msg = tkinter.Message(about_master, text=txt, bg="white", fg="black", aspect=300)
-            msg.grid()
-            ttk.Button(about_master, text='Chiudi', command=about_master.destroy).grid(sticky='E',padx=5,pady=5)
-            about_master.transient(self.master)
-
-        def open_options_window(event):
-            OptionsWindow(self.master, self.settings)
-
-        font = self.font
-
-        ttk.Style().configure("TButton", background='gray50', foreground='white',font=(font,11))
-        ttk.Style().configure("TLabel", font=(font,11))
-
-        self.master.resizable(False, False)
-        self.master.title('Webp ConverteR')
-        self.frame = ttk.Frame(self.master, style='TFrame')
-
-        title = Label(self.frame, text='Webp ConverteR', bg='#fd4949', font=(font, 26, 'bold'))
-        title.grid(row=0, column=0, columnspan='4', sticky='we')
-
-        self.addfile_button = ttk.Button(self.frame,text='Aggiungi file')
-        self.addfile_button.bind("<ButtonRelease-1>", self.askfile)
-        self.addfile_button.grid(row=1, column=0,padx=15, pady=10, sticky='we')
-        self.addfolder_button = ttk.Button(self.frame,text='Aggiungi cartella')
-        self.addfolder_button.bind("<ButtonRelease-1>", self.askdir)
-        self.addfolder_button.grid(row=1,column=1,padx=15,pady=10,sticky='we')
-        self.remove_button = ttk.Button(self.frame, text='Rimuovi')
+        ''' toolbar '''
+        self.addfile_button = ttk.Button(toolbar, text='Add File')
+        self.addfile_button.bind("<ButtonRelease-1>", self.ask_file)
+        self.addfile_button.pack(side='left', padx=10, pady=10)
+        self.add_folder_button = ttk.Button(toolbar, text='Add Folder')
+        self.add_folder_button.bind("<ButtonRelease-1>", self.ask_dir)
+        self.add_folder_button.pack(side='left', padx=10, pady=10)
+        self.remove_button = ttk.Button(toolbar, text='Remove')
         self.remove_button.bind("<ButtonRelease-1>", self.remove_file)
-        self.remove_button.grid(row=1,column=3,padx=15,pady=10,sticky='we')
+        self.remove_button.pack(side='left', padx=10, pady=10)
+        self.options_button = ttk.Button(toolbar, text='Options', style='TButton')
+        self.options_button.bind("<ButtonRelease-1>", self.open_options_window)
+        self.options_button.pack(side='right', padx=10, pady=10)
+        ttk.separator = ttk.Separator(toolbar, orient='vertical').pack(side='right', fill='y', padx=10, pady=10)
 
-        ttk.Label(self.frame,text='Sorgente',style='TLabel').grid(row=2,column=0,columnspan='4',sticky='w',padx='10',pady='5')
+        ''' input frame '''
+        ttk.Label(input_frame, text='Source', style='TLabel').pack(anchor='nw', padx='10', pady='10')
+        self.scrollbar = Scrollbar(input_frame, orient="vertical")
+        self.listbox = MyListbox(input_frame, selectmode=EXTENDED,
+                               yscrollcommand=self.scrollbar.set, height=15)
+        self.listbox.config(yscrollcommand=self.scrollbar.set)
+        self.scrollbar.config(command=self.listbox.yview)
+        self.scrollbar.pack(side='right', fill='y')
+        self.listbox.pack(side='left', fill='both', expand=1, padx=10, pady=10)
 
-        self.scrollbar = Scrollbar(self.frame, orient="vertical")
-        self.listbox = Listbox(self.frame, selectmode=EXTENDED,
-                               yscrollcommand = self.scrollbar.set, height=12)
-        self.listbox.config(yscrollcommand = self.scrollbar.set)
-        self.scrollbar.config(command = self.listbox.yview)
-        self.scrollbar.grid(row=3, column=4, sticky=N+S)
-        self.listbox.grid(row=3,column=0,columnspan=4,padx=10,pady=5,sticky='we')
+        ''' destination frame '''
+        ttk.Label(dest_frame, text='Destination', style='TLabel').pack(anchor='nw', padx=10)
 
-        self.options_button = ttk.Button(self.frame, text='Opzioni', style='TButton')
-        self.options_button.bind("<ButtonRelease-1>", open_options_window)
-        self.options_button.grid(row=4,column=3,padx=10,pady=5)
+        self.check = Checkbutton(dest_frame, text='Save in:',
+                                 variable=self.change_output,
+                                 onvalue=True, offvalue=False,
+                                 command=self.on_check_changed)
+        self.check.pack(side='left', padx=10, pady=10)
+        self.destination_entry = Entry(dest_frame)
+        self.destination_entry.insert(0, self.default_base)
+        self.destination_entry.pack(side='left', expand=1, fill='x', padx=10)
+        self.change_destination = ttk.Button(dest_frame, text='Change')
+        self.change_destination.bind("<ButtonRelease-1>", self.set_destination)
+        self.change_destination.pack(side='right', padx=10, pady=10)
+        self.change_destination.configure(state='disabled')
 
-        ttk.Label(self.frame, text='Destinazione',font=(font,11), style='TLabel').grid(row=5,column=0,columnspan=4,sticky='w',padx=10,pady=5)
-        self.check = Checkbutton(self.frame, text='Salva nella cartella:', 
-                                 variable = self.change_output,
-                                 onvalue = True, offvalue = False,
-                                 command = on_check_changed)
-        self.check.grid(row=6, column=0, sticky='W', padx=10)
-        self.change_destination = ttk.Button(self.frame, text='Cambia')
-        self.change_destination.bind("<ButtonRelease-1>", on_change_destination_clicked)
-        self.change_destination.grid(row=6, column=1, sticky='WE', padx=10)
-        self.change_destination.configure(state = 'disabled')
+        ''' bottom frame '''
+        self.info_label = ttk.Label(bottom_frame, style='TLabel')
+        self.update_status_bar(0)
+        self.info_label.pack(anchor='nw', padx=10)
+        self.progressbar = ttk.Progressbar(bottom_frame, mode='determinate', value=0, maximum=100)
+        self.progressbar.pack(side='left', expand=1, fill='x', padx=10, pady=10)
+        self.progress_label = ttk.Label(bottom_frame, text='0 %', style='TLabel')
+        self.progress_label.pack(side='left', padx=10, pady=10)
+        self.run_button = Button(bottom_frame, text='Start')
+        self.run_button.bind('<ButtonRelease-1>', self.do_job)
+        self.run_button.pack(side='right', padx=10)
 
-        self.destination_entry = Entry(self.frame)
-        self.destination_entry.configure(state = 'disabled')
-        self.destination_entry.grid(row=6,column=2,columnspan=2,sticky='we',padx=10)
-        self.infolabel = ttk.Label(self.frame,text='0 file da convertire', style='TLabel')
-        self.infolabel.grid(row=7, column=0, sticky='W', columnspan=2, padx=10, pady=10)
-        self.progresslabel = ttk.Label(self.frame,text='0 %', style='TLabel')
-        self.progresslabel.grid(row=7, column=2, sticky='W', columnspan=2, padx=10, pady=10)
-        self.progressbar = ttk.Progressbar(self.frame, mode='determinate', value=0, maximum=100)
-        self.progressbar.grid(row=8, column=0, sticky='WE', columnspan=4, padx=10, pady=5)
-        self.about = ttk.Button(self.frame,text='Informazioni',command=about)
-        self.about.grid(row=9,column=0,sticky='W',padx=10,pady=15)
-        self.run_button = ttk.Button(self.frame,text='Start')
-        self.run_button.bind('<ButtonRelease-1>', self.run)
-        self.run_button.grid(row=9, column=3, sticky='e', padx=10 ,pady=15)
+        ''' packing frames '''
+        ttk.separator = ttk.Separator(self.master, orient='horizontal').pack(expand=1, fill='x')
+        toolbar.pack(expand=1, fill='both')
+        ttk.separator = ttk.Separator(self.master, orient='horizontal').pack(expand=1, fill='x')
+        input_frame.pack(expand=1, fill='both')
 
-        self.frame.grid(row=0, column=0)
+        self.output_format = StringVar()
+        Label(output_format_frame, text='Output format:').pack(side='left', padx=10, pady=10)
+        pass_combobox = ttk.Combobox(output_format_frame, textvariable=self.output_format, state='readonly')
+        pass_combobox['values'] = settings.supported_formats
+        pass_combobox.current(2)
+        pass_combobox.pack(side='left', expand=1, fill='x', padx=10)
+
+        output_format_frame.pack(expand=1, fill='both')
+        dest_frame.pack(expand=1, fill='both')
+        bottom_frame.pack(expand=1, fill='both', pady=5)
         self.master.mainloop()
 
-    ''' overwrite the default exit method. chiude i thread prima di uscire. '''
-    def destroy(self):
-        ''' To be implemented '''
-        self.master.destroy()
+    def set_destination(self, event=None):
+        if not self.running and self.change_output.get():
+            dirname = tkinter.filedialog.askdirectory(title='Where do you want to save the images?')
+            if dirname:
+                # dir += '/'
+                self.destination_entry.delete(0, END)
+                self.destination_entry.insert(0, dirname)
 
-    def popup(self, txt, errors=None):
-        info = tkinter.Toplevel(self.master)
+    def on_check_changed(self):
+        # print('change output: '+str(self.change_output.get()))
+        if self.change_output.get():
+            self.change_destination.configure(state='normal')
+        else:
+            self.change_destination.configure(state='disabled')
+
+    def open_options_window(self, event=None):
+        if not self.running:
+            OptionsWindow(self.master, self.manager.get_parameters())
+
+    def destroy(self):
+        do_exit = True
+        if self.running:
+            if tkinter.messagebox.askyesno("Stai per uscire", "Interrompere la conversione e uscire?"):
+                self.encoder.abort()
+                self.encoder.join()
+            else:
+                do_exit = False
+        if do_exit:
+            self.master.destroy()
+
+    def about(self):
+        master = tkinter.Toplevel(self.master)
+        txt = "WebPConverter permette di convertire file .jpg e .png" + \
+              " in .webp e viceversa.\n" + \
+              "Per ulteriori informazioni, potete consultare " + \
+              "la pagina ufficiale di Webp."
+        msg = tkinter.Message(master, text=txt, bg="white", fg="black", aspect=300)
+        msg.grid()
+        ttk.Button(master, text='Chiudi', command=master.destroy).grid(sticky='E', padx=5, pady=5)
+        master.transient(self.master)
+
+    def show_info(self, txt, errors=None):
+        master = tkinter.Toplevel(self.master)
         if errors:
             txt += "I seguenti file hanno generato un'errore:\n"
             for error in errors:
-                txt += error+'\n'
-        msg = tkinter.Message(info, text=txt, bg="#ff6666", fg="white", aspect=1000)
+                txt += error + '\n'
+        msg = tkinter.Message(master, text=txt, bg="white", fg="black", aspect=1000)
         msg.grid()
-        ttk.Button(info, text='Chiudi', command=info.destroy).grid(sticky='E',padx=5,pady=5)
-        info.transient(self.master)
+        ttk.Button(master, text='Close', command=master.destroy).grid(sticky='E', padx=5, pady=5)
+        master.transient(self.master)
 
     def enable_window(self):
         self.run_button.configure(text='Start')
-        self.addfile_button.configure(state = 'normal')
-        self.addfolder_button.configure(state = 'normal')
-        self.remove_button.configure(state = 'normal')
-        self.listbox.configure(state = 'normal')
+        self.addfile_button.configure(state='normal')
+        self.add_folder_button.configure(state='normal')
+        self.remove_button.configure(state='normal')
+        self.listbox.configure(state='normal')
         self.options_button.configure(state='normal')
-        self.check.configure(state = 'normal')
-        self.change_destination.configure(state = 'normal')
-        self.about.configure(state = 'normal')
+        self.check.configure(state='normal')
+        self.destination_entry.configure(state='normal')
+        self.change_destination.configure(state='normal')
 
     def disable_window(self):
         self.run_button.configure(text='Stop')
-        self.addfile_button.configure(state = 'disabled')
-        self.addfolder_button.configure(state = 'disabled')
-        self.remove_button.configure(state = 'disabled')
-        self.listbox.configure(state = 'disabled')
+        self.addfile_button.configure(state='disabled')
+        self.add_folder_button.configure(state='disabled')
+        self.remove_button.configure(state='disabled')
+        self.listbox.configure(state='disabled')
         self.options_button.configure(state='disabled')
-        self.check.configure(state = 'disabled')
-        self.change_destination.configure(state = 'disabled')
-        self.destination_entry.configure(state = 'disabled')
-        self.about.configure(state = 'disabled')
+        self.check.configure(state='disabled')
+        self.destination_entry.configure(state='disabled')
+        self.change_destination.configure(state='disabled')
 
-    def askfile(self, event):
-        if self.running:
-            return None
-        filename = tkinter.filedialog.askopenfilename(
-                                filetypes = self.filepattern,
-                                title = 'Scegli il file da convertire')
-        if filename:
-            self.addfile(filename)
-            self.update_info()
+    def ask_file(self, event=None):
+        if not self.running:
+            uri = tkinter.filedialog.askopenfilename(filetypes=settings.file_pattern,
+                                                     title='Scegli il file da convertire')
+            if uri:
+                self.manager.add_file(Path(uri))
 
-    def askdir(self, event):
-        if self.running:
-            return None
-        dirname = tkinter.filedialog.askdirectory(title='Scegli la cartella con le immagini')
-        dirname += '/'
-        if dirname:
-            for filename in os.listdir(dirname):
-                self.addfile(dirname+filename)
-            self.update_info()
+    def ask_dir(self, event=None):
+        if not self.running:
+            dirname = tkinter.filedialog.askdirectory(title='Scegli la cartella con le immagini')
+            print(type(dirname))
+            print(dirname)
+            if dirname:
+                dirname += '/'
+                for filename in os.listdir(dirname):
+                    self.manager.add_file(Path(dirname + filename))
 
-    def addfile(self, filename):
-        if utils.isconvertible(filename) and filename not in self.filelist:
-            self.filelist.append(filename)
-            self.listbox.insert(END, filename)
-
-    def remove_file(self, event):
+    def remove_file(self, event=None):
         t = self.listbox.curselection()
         while len(t) > 0:
-            self.filelist.pop(int(t[0]))
+            self.manager.remove_file_at(int(t[0]))
             self.listbox.delete(t[0])
             t = self.listbox.curselection()
-        self.update_info()
 
-    def update_settings(self):
+    def update_parameters(self):
+        parameters = self.manager.get_parameters()
         if self.change_output.get() and self.destination_entry.get():
-            self.settings['dir'] = self.destination_entry.get()+'/'
+            parameters['dir'] = self.destination_entry.get() + '/'
         else:
-            self.settings['dir'] = ''
+            parameters['dir'] = ''
+        parameters['output_format'] = str(self.output_format.get())
+        print(parameters['output_format'])
 
-    def run(self, event):
-        if self.running:
-            ''' STOP '''
-            self.encoder.abort()
-            self.aborted = True
-            # it is still working
-        elif len(self.filelist) > 0:
-            ''' START '''             
-            self.running = True
-            self.aborted = False
-            self.disable_window()
-            self.update_settings()
-            self.encoder = Encoder(self.filelist, self.settings, self)
-            self.encoder.start()
+    def do_job(self, event=None):
+        if self.encoding_started:
+            self.manager.stop_job()
         else:
-            ''' Nessun file aggiunto '''
-            pass
+            self.update_parameters()
+            self.manager.start_job()
 
-    def update_progress(self, progress=0, index=0):
-        self.progressbar.configure(value = progress)
-        self.update_info(index)
-        self.progresslabel.configure(text = str(progress) + " %.")
+    def update_status_bar(self, total):
+        self.info_label.configure(text=str(total) + ' ' + ('file' if total == 1 else 'files') + ' to convert.')
 
-    def update_info(self, completed=0):
-        self.infolabel.configure(text = str(len(self.filelist)-completed) + ' file da convertire.')
+    def on_encoding_start(self):
+        self.encoding_started = True
+        self.disable_window()
 
-    def notify_finish(self, errors, new_filelist):
-        txt = 'Conversione file completata'
-        if len(errors):
-            txt += '.\n'
-        else:
-            txt += ' con successo.\n'
-        self.enable_window()
-        self.listbox.delete(0, END)
-        self.filelist = new_filelist
-        self.update_progress(0)
-        if self.aborted:
-            txt = 'Conversione file interrotta.\n'
-            for filename in self.filelist:
-                self.listbox.insert(END, filename)
-        self.running = False
-        if errors or not self.aborted:
-            self.popup(txt, errors)
+    def on_file_add(self, path: Path, total: int):
+        self.listbox.insert(END, path.absolute())
+        self.update_status_bar(total)
+        print(path.absolute(), ' added')
+
+    def on_file_remove(self, path: Path, total: int):
+        self.update_status_bar(total)
+        print(path.absolute(), ' removed')
+
+    def on_encoding_finish(self, stopped=False, errors=None):
+        self.encoding_started = False
+        tkinter.messagebox.showinfo("Conversione finita", " con successo")
+
+    def on_progress(self, progress: float):
+        print('update_progress:', progress)
+        self.progressbar.configure(value=progress)
+        self.progress_label.configure(text=str(progress) + " %")
+
+    def on_file_encode(self, path: Path, success: bool, files_left: int):
+        self.listbox.delete_elem(path)
+        self.update_status_bar(files_left)
+
+    def on_encoding_stop(self):
+        self.encoding_started = False
+        tkinter.messagebox.showinfo("Conversione file", " interrotta")
