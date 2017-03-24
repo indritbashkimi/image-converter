@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 # -*- coding: iso8859-15 -*-
 # (C) Indrit Bashkimi indrit.bashkimi@gmail.com
-# Version 0.4 beta
-# ultima modifica: 2 novembre 2011
+# Version 0.4.5 beta
+# ultima modifica: 7 gennaio 2012
 
 from tkinter import ttk
 import tkinter.messagebox, tkinter.filedialog, tkinter.simpledialog
@@ -25,18 +25,22 @@ def quality(file):
                     return q()
         i-=1
     return q()
+
+def errore(d,l): #(dir, file[])
+    if not os.path.isfile(d+l[1]) or os.path.getsize(d+l[1])==0:
+            return 1
         
-def webp(src,dst,q,i):
+def webp(src,dst,q):
     size=os.path.getsize(src)/1024
-    print(str(i)+'\tElaborando',os.path.split(src)[1], end='\t[ '+str(int(size))+' kb]\tq='+q+' --> ')
+    print('\tElaborando',os.path.split(src)[1], end='\t[ '+str(int(size))+' kb]\tq='+q+' --> ')
     os.system('cwebp -q '+q+' "'+src+'" -o "'+dst+'"') # cwebp -quality 80 image.png -o image.webp
     if os.path.exists(dst):
         print(os.path.split(dst)[1])
     else:
         print('ERRORE')
 
-def dwebp(src,dst,i):
-    print(str(i)+'\tElaborando',os.path.split(src)[1],end='\t--> ')
+def dwebp(src,dst):
+    print('\tElaborando',os.path.split(src)[1],end='\t--> ')
     os.system('dwebp "'+src+'" -o "'+dst+'"') # dwebp image.webp -o image.png
     if os.path.exists(dst):
         print(os.path.split(dst)[1])
@@ -45,56 +49,62 @@ def dwebp(src,dst,i):
 
 def file():
     myFormats=[
-    ('File supportati','*.jpg'),
-    ('File supportati','*.JPG'),
-    ('File supportati','*.png'),
-    ('File supportati','*.PNG'),
-    ('File supportati','*.jpeg'),
-    ('File supportati','*.JPEG'),
-    ('File supportati','*.webp'),
-    ('File supportati','*.WEBP'),
-    ('Portable Network Graphics','*.png'),
-    ('Portable Network Graphics','*.PNG'),
-    ('JPEG','*.jpg'),
-    ('JPEG','*.JPG'),
-    ('JPEG','*.jpeg'),
-    ('JPEG','*.JPEG'),
-    ('WebP','*.webp'),
-    ('WebP','*.WEBP'),
+    ('File supportati','*.jpg'),('File supportati','*.JPG'),
+    ('File supportati','*.png'),('File supportati','*.PNG'),
+    ('File supportati','*.jpeg'),('File supportati','*.JPEG'),
+    ('File supportati','*.webp'),('File supportati','*.WEBP'),
+    ('Portable Network Graphics','*.png'),('Portable Network Graphics','*.PNG'),
+    ('JPEG','*.jpg'),('JPEG','*.JPG'),
+    ('JPEG','*.jpeg'),('JPEG','*.JPEG'),
+    ('WebP','*.webp'),('WebP','*.WEBP'),
     ]
     File=tkinter.filedialog.askopenfilename(filetypes=myFormats,title='Scegli il file da convertire')
     print('Sto lavorando in',os.path.split(File)[0],'\n1 file da convertire\n\n')
     if File[len(File)-3:] in ['jpg','JPG','png','PNG']:       # se gli ultimi 3 caratteri sono..
-        webp(File,File[:len(File)-3]+'webp',quality(os.path.split(File)[1]),1)
+        webp(File,File[:len(File)-3]+'webp',quality(os.path.split(File)[1]))
     elif File[len(File)-4:] in ['webp']:
-        dwebp(File,File[:len(File)-4]+'png',1)
+        dwebp(File,File[:len(File)-4]+'png')
     else:   #elif File[len(File)-4:] in ['jpeg','JPEG']:
-        webp(File,File[:len(File)-4]+'webp',quality(os.path.split(File)[1]),1)
+        webp(File,File[:len(File)-4]+'webp',quality(os.path.split(File)[1]))
     print('\n\nPROCESSO TERMINATO\n\n')
     tkinter.messagebox.showinfo("Success","Processo terminato")
     
 def cartella():
+    
     dir=tkinter.filedialog.askdirectory(title='Scegli la cartella con le immagini')+'/'
     files=os.listdir(dir)
-    print(type(files))
+    
     if len(files)>0:
-        print('Sto lavorando in',dir,'\n',len(files),'file da elaborare\n\n')
-        i=0
+        print('Elaborando',len(files),'files in',dir,'...\n')
+        toWebp, toPng = [], []
         for file in files:
             if file[len(file)-3:] in ['jpg','JPG','png','PNG']:
-                webp(dir+file,dir+file[:len(file)-3]+'webp',quality(file),i)
+                toWebp.append([file, file[:len(file)-3]+'webp', quality(file)])
             elif file[len(file)-4] in ['webp']:
-                dwebp(dir+file,dir+file[:len(file)-4],i)
+                toPng.append([file, file[:len(file)-4]])
             elif file[len(file)-4] in ['jpeg','JPEG']:
-                webp(dir+file,dir+file[:len(file)-4]+'webp',quality(file),i)
-            else:
-                print(os.path.split(file)[1],'non è un file supportato')
-            i+=1
+                toWebp.append([file, file[:len(file)-4]+'webp', quality(file)])
+                
+    print(len(toWebp)+len(toPng),'file da convertire...')
+
+    ERRORE=[]
+    
+    for file in toWebp:
+        webp(dir+file[0], dir+file[1], file[2])
+        if errore(dir, file):
+            ERRORE.append(dir+file[1])
+    for file in toPng:
+        dwebp(dir+file[0], dir+file[1])
+        if errore(dir, file):
+            ERRORE.append(dir+file[1])
+
+    if not len(ERRORE):   
+        print('\n\nPROCESSO TERMINATO\n\n')
+        tkinter.messagebox.showinfo("Fine","Processo terminato")
     else:
-        print ('Cartella vuota!')
-        tkinter.messagebox.showerror("Errore","Cartella vuota!")
-    print('\n\nPROCESSO TERMINATO\n\n')
-    tkinter.messagebox.showinfo("Fine","Processo terminato")
+        print('Processo terminato, ma',len(ERRORE),'files hanno generato ERRORE durante la conversione!\n')
+        for file in ERRORE:
+            print(file)
         
 def main():
     color=('#FF6000','#e0ff94','#009FFF','#ffffff')
