@@ -1,59 +1,52 @@
 import os
-from settings import cpu_count
-from threading import Lock, Thread
-import utils
+import utility
+from threading import Thread, Lock
 
 
-class Encoder(Thread):
+class Encode(Thread):
 
     def __init__(self, filelist, settings, listener):
         self.filelist = filelist
         self.settings = settings
         self.listener = listener
         self.stop = False
-        self.converted = 0
-        self.size = 0
         self.totalsize = 0
+        self.size = 0
         self.errors = []
         self.threads = []
-        self.nthreads = cpu_count()
-        self.index = 0
         self.lock = Lock()
         self.cwebp_settings = None
         self.dwebp_settings = None
         Thread.__init__(self)
 
     def run(self):
-        self.cwebp_settings = self.get_cwebp_settings()
-        self.dwebp_settings = self.get_dwebp_settings()
-        for file in self.filelist:
-            self.totalsize += os.path.getsize(file)
-        for i in range(self.nthreads):
+        self.cwebp_settings = self.__get_cwebp_settings()
+        self.dwebp_settings = self.__get_dwebp_settings()
+        for e in self.filelist:
+            self.totalsize += os.path.getsize(e)
+        for i in range(utility.cpu_count()-1):
             self.threads.append(Thread(target=self.encode))
             self.threads[i].start()
+        self.encode()
         for thread in self.threads:
             thread.join()
-        new_filelist = []
-        for file in self.filelist:
-            if file:
-                new_filelist.append(file)
-        self.listener.notify_finish(self.errors, new_filelist)
+        self.listener.notify_finish(self.errors)
 
     def encode(self):
         print('New thread launched.')
-        while self.stop == False and self.index < len(self.filelist):
+        while self.stop == False:
             self.lock.acquire()
-            my_index = self.index
-            self.index += 1
+            image = self.filelist.get()
             self.lock.release()
-            image = self.filelist[my_index]
-            self.filelist[my_index] = None
+            if not image:
+                break
             output = self.getoutput(image)
-            if utils.getextension(os.path.split(image)[1]) == '.webp':
-                command = 'dwebp "%s" %s -o "%s" > /dev/null' % (image, self.dwebp_settings, output)
+            if utility.getextension(os.path.split(image)[1]) == '.webp':
+                command = 'dwebp "%s" %s -o %s > /dev/null' % (image, self.dwebp_settings, output)
             else:
                 command = 'cwebp -q %d %s "%s" -o "%s" > /dev/null' % (self.get_quality(image), self.cwebp_settings, image, output)
             os.system(command)
+
             if os.path.exists(output):
                 if not os.path.getsize(output):
                     self.errors.append(image)
@@ -63,23 +56,19 @@ class Encoder(Thread):
                         pass
             else:
                 self.errors.append(image)
-            self.lock.acquire()
-            self.converted += 1
+
             self.update_progress(image)
-            self.lock.release()
 
     def get_quality(self, img):
-        if self.settings['qfile']:
-            # image[q89].jpg. rimuovendo l'estensione l'algoritmo lavora con dim ext generica
-            img = utils.getname(os.path.split(img)[1])
-            q = img[-3:-1]
-            if len(img) > 5 and img[-5:-3] == '[q' and str.isnumeric(q) and img[-1] == ']':
-                if q == '00':
-                    return 100
-                return int(q)
+        # image[q89].jpg. rimuovendo l'estensione l'algoritmo lavora con dim ext generica
+        img = utility.getname(img)
+        if len(img) > 5 and img[-5:-3] == 'q[' and str.isnumeri(img[-3:-1]) and img[-1] == ']':
+            if q == '00':
+                return 100
+            return int(q)
         return self.settings['q']
 
-    def get_cwebp_settings(self):
+    def __get_cwebp_settings(self):
         s = ''
         if self.settings['pass'] != 0:
             s += ' -pass ' + str(self.settings['pass'])
@@ -89,7 +78,7 @@ class Encoder(Thread):
             s += ' -quiet'
         return s
 
-    def get_dwebp_settings(self):
+    def __get_dwebp_settings(self):
         s = ''
         return s
 
@@ -101,12 +90,12 @@ class Encoder(Thread):
             return root + '.png'
         return root + '.webp'
 
-    def update_progress(self, image):
-        self.size += os.path.getsize(image)
-        self.listener.update_progress(int((self.size / self.totalsize) * 100), self.converted)
+    def update_progress(self, img):
+        self.lock.acquire()
+        self.filelist.done()
+        self.size += os.path.getsize(img)
+        self.listener.update_progress(int((self.size / self.totalsize) * 100))
+        self.lock.release()
 
-    def pause(self):
-        pass
-
-    def abort(self):
+    def force_stop(self):
         self.stop = True
