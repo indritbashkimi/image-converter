@@ -1,3 +1,14 @@
-.directory
 __pycache__
 
+# IDE files
+.idea/*
+*.iml
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Trashes
+ehthumbs.db
+Thumbs.db
+.directory
