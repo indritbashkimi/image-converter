@@ -31,7 +31,6 @@ class MainWindow(ManagerListener):
         self.default_base = '/home/'
         self.running = False
         self.encoder = None
-        self.font = 'Ubuntu'
         self.manager = Manager()
         self.manager.add_listener(self)
 
@@ -44,8 +43,8 @@ class MainWindow(ManagerListener):
         self.change_output = BooleanVar()
 
         """ style """
-        ttk.Style().configure("TButton", font=(self.font, 11))
-        ttk.Style().configure("TLabel", font=(self.font, 11))
+        ttk.Style().configure("TButton")
+        ttk.Style().configure("TLabel")
         ttk.Style().configure("TProgressbar")
 
         ''' menu '''
@@ -181,7 +180,7 @@ class MainWindow(ManagerListener):
               " in .webp e viceversa.\n" + \
               "Per ulteriori informazioni, potete consultare " + \
               "la pagina ufficiale di Webp."
-        msg = tkinter.Message(master, text=txt, bg="white", fg="black", aspect=300)
+        msg = tkinter.Message(master, text=txt, aspect=300)
         msg.grid()
         ttk.Button(master, text='Chiudi', command=master.destroy).grid(sticky='E', padx=5, pady=5)
         master.transient(self.master)
@@ -192,7 +191,7 @@ class MainWindow(ManagerListener):
             txt += "I seguenti file hanno generato un'errore:\n"
             for error in errors:
                 txt += error + '\n'
-        msg = tkinter.Message(master, text=txt, bg="white", fg="black", aspect=1000)
+        msg = tkinter.Message(master, text=txt, aspect=1000)
         msg.grid()
         ttk.Button(master, text='Close', command=master.destroy).grid(sticky='E', padx=5, pady=5)
         master.transient(self.master)
