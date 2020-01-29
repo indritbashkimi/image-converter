@@ -39,7 +39,7 @@ class MainWindow(ManagerListener):
         self.master = Tk()
         self.master.protocol('WM_DELETE_WINDOW', self.destroy)
         # self.master.resizable(False, False)
-        self.master.title('Webp Converter')
+        self.master.title('Image Converter')
         self.change_output = BooleanVar()
 
         """ style """
@@ -176,8 +176,8 @@ class MainWindow(ManagerListener):
 
     def about(self):
         master = tkinter.Toplevel(self.master)
-        txt = "WebPConverter converts .jpg and .png files" + \
-              " in .webp and viceversa.\n"
+        txt = "Image Converter converts .jpg and .png files" + \
+              " in .webp and vice versa.\n"
         msg = tkinter.Message(master, text=txt, aspect=300)
         msg.grid()
         ttk.Button(master, text='Chiudi', command=master.destroy).grid(sticky='E', padx=5, pady=5)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-#  Webp Converter 0.4.0.0
+#  Image Converter 0.4.0.0
 #
 #  Copyright 2015 Indrit Bashkimi <indrit.bashkimi@gmail.com>
 #
@@ -8,7 +8,7 @@
 import sys
 import platform
 
-NAME = 'WebpConverter'
+NAME = 'Image Converter'
 VERSION = '0.4.0.0'
 system = platform.system()  # -> 'Linux' oppure: system = os.name -> 'posix'
 python_version = int(platform.python_version()[0])
