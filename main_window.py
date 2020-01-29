@@ -166,7 +166,7 @@ class MainWindow(ManagerListener):
     def destroy(self):
         do_exit = True
         if self.running:
-            if tkinter.messagebox.askyesno("Stai per uscire", "Interrompere la conversione e uscire?"):
+            if tkinter.messagebox.askyesno("Exit application", "Interrupt process and exit?"):
                 self.encoder.abort()
                 self.encoder.join()
             else:
@@ -176,10 +176,8 @@ class MainWindow(ManagerListener):
 
     def about(self):
         master = tkinter.Toplevel(self.master)
-        txt = "WebPConverter permette di convertire file .jpg e .png" + \
-              " in .webp e viceversa.\n" + \
-              "Per ulteriori informazioni, potete consultare " + \
-              "la pagina ufficiale di Webp."
+        txt = "WebPConverter converts .jpg and .png files" + \
+              " in .webp and viceversa.\n"
         msg = tkinter.Message(master, text=txt, aspect=300)
         msg.grid()
         ttk.Button(master, text='Chiudi', command=master.destroy).grid(sticky='E', padx=5, pady=5)
@@ -188,7 +186,7 @@ class MainWindow(ManagerListener):
     def show_info(self, txt, errors=None):
         master = tkinter.Toplevel(self.master)
         if errors:
-            txt += "I seguenti file hanno generato un'errore:\n"
+            txt += "The following files caused an error:\n"
             for error in errors:
                 txt += error + '\n'
         msg = tkinter.Message(master, text=txt, aspect=1000)
@@ -221,13 +219,13 @@ class MainWindow(ManagerListener):
     def ask_file(self, event=None):
         if not self.running:
             uri = tkinter.filedialog.askopenfilename(filetypes=settings.file_pattern,
-                                                     title='Scegli il file da convertire')
+                                                     title='Select the file to convert')
             if uri:
                 self.manager.add_file(Path(uri))
 
     def ask_dir(self, event=None):
         if not self.running:
-            dirname = tkinter.filedialog.askdirectory(title='Scegli la cartella con le immagini')
+            dirname = tkinter.filedialog.askdirectory(title='Select the folder with the images')
             print(type(dirname))
             print(dirname)
             if dirname:
@@ -276,7 +274,7 @@ class MainWindow(ManagerListener):
 
     def on_encoding_finish(self, stopped=False, errors=None):
         self.encoding_started = False
-        tkinter.messagebox.showinfo("Conversione finita", " con successo")
+        tkinter.messagebox.showinfo("Process finished", "Process finished successfully")
 
     def on_progress(self, progress: float):
         print('update_progress:', progress)
@@ -289,4 +287,4 @@ class MainWindow(ManagerListener):
 
     def on_encoding_stop(self):
         self.encoding_started = False
-        tkinter.messagebox.showinfo("Conversione file", " interrotta")
+        tkinter.messagebox.showinfo("Process interrupted", "Process interrupted")

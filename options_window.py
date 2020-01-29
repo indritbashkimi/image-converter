@@ -5,7 +5,7 @@ from tkinter import ttk
 class OptionsWindow(object):
 
     def __init__(self, master, settings):
-        ttk.Style().configure("TButton",font=('Ubuntu',11))
+        ttk.Style().configure("TButton")
         self.master = Toplevel(master)
         self.master.resizable(False, False)
         self.master.title('Opzioni')
@@ -15,7 +15,7 @@ class OptionsWindow(object):
         self.replace = BooleanVar()
         self.passes = StringVar()
 
-        Label(self.master, text='Qualità predefinita:').grid(row=0, column=0, sticky='W', padx=10, pady=5)
+        Label(self.master, text='Default quality:').grid(row=0, column=0, sticky='W', padx=10, pady=5)
         self.scale = Scale(self.master, orient='horizontal',
                                         resolution='1',
                                         length=100,
@@ -23,20 +23,20 @@ class OptionsWindow(object):
                                         variable=self.quality)
         self.scale.set(self.settings['quality'])
         self.scale.grid(row=0, column=1, sticky='WE', padx=10, pady=5)
-        check_qfile = Checkbutton(self.master, text='Usa la qualità specificata nel nome del file (filename[q85].jpg):', 
+        check_qfile = Checkbutton(self.master, text='Use the quality specified in the filename (filename[q85].jpg):', 
                                                variable = self.qfile,
                                                onvalue = True, offvalue = False)
         check_qfile.select()
         check_qfile.grid(row=1, column=0, columnspan=2, sticky='W', padx=10, pady=5)
 
-        Label(self.master, text='Dimensione (bytes):').grid(row=4, column=0, padx=10, pady=5, sticky='W')
+        Label(self.master, text='Size (bytes):').grid(row=4, column=0, padx=10, pady=5, sticky='W')
         self.size_entry = Entry(self.master)
         size_text = self.settings['size']
         if size_text == 0:
             size_text = 'default'
         self.size_entry.insert(0, size_text)
         self.size_entry.grid(row=4, column=1, padx=10, pady=5, sticky='WE')
-        Label(self.master, text='Passi (calcolo dimensione):').grid(row=5, column=0, sticky='W', padx=10, pady=5)
+        Label(self.master, text='Passes (calculate size):').grid(row=5, column=0, sticky='W', padx=10, pady=5)
         pass_combobox = ttk.Combobox(self.master, textvariable=self.passes, state='readonly')
         pass_combobox['values'] = (1,2,3,4,5,6,7,8,9,10)
         pass_combobox.current(settings['pass']-1)
